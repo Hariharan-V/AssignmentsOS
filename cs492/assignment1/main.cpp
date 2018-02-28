@@ -186,8 +186,10 @@ bool productq::isempty(){
     return q.empty();
   }
 int  productq::push(){
-
-    product *p = new product(++id,rand()%1024 ,clock());
+  int x = rand()%1024;
+  //cout<<x<<endl;
+  fflush(stdout);
+  product *p = new product(++id,1024 ,clock());
     produced++;
     if(produced==1){
       start = p->getTstamp();
@@ -357,6 +359,7 @@ product::~product(){
   if((minT>tt)||(minT==numeric_limits<double>::max())){
     minT = tt;
   }
+  avgT+=tt;
 }
 
 void initStats(){
