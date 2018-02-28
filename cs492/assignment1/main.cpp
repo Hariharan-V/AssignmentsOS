@@ -9,7 +9,9 @@
 #include <vector>
 #include <queue>
 #include <cstdlib>
+#include <limits>
 using namespace std;
+
 int parameters[7];
 int getinputs(int argc, char* argv[]);
 void fn();//computes 10th fibbonacci number
@@ -17,15 +19,20 @@ class product{
 private:
   int id;
   clock_t timestamp;
+  double wait;//in milliseconds
+  clock_t temp;
   int life;
 public:
   product(int id_t,int life_t ,clock_t timestamp_t);//set id, life, time
   int getid();//get id
   int getlife();//get life
   clock_t getTstamp();//get stamp
+  void update_wait();
+  void update_temp();
   void updateLife(int x){//updates life
     life = x;
   }
+  ~product();
 };
 class productq{
 private:
@@ -46,10 +53,11 @@ public:
   int getProduced();//returns amount produced
   void consume();
   void addBack(product * p){//adds back product
+    p->update_temp();
     q.push(p);
   }
 };
-
+clock_t start;
 pthread_t* consumer;//consumer threads
 pthread_t* producer;//producer threads
 pthread_mutex_t acc;//blocks access to product queue
@@ -68,8 +76,9 @@ productq* q;//pointer to the product queue object
 void instantiateMutexCond();
 void destroyMutexCond();
 void* fcfs(void* id );
-
-
+double totaltime, minT, maxT, avgT, minW, maxW,avgW, consumerT, producerT;
+void initStats();
+void printStats();
 int main(int argc, char * argv[]){
   if(  getinputs(argc, argv)==0){
     /*print error message for not enough inputs*/
@@ -78,10 +87,11 @@ int main(int argc, char * argv[]){
   q = new productq(parameters[3]);
    instantiateMutexCond();
   instantiateProducerThreads();
+  initStats();
   
   if(parameters[4]==0){
     //fcfs
-    // instantiateConsumerThreads(fcfs);
+     instantiateConsumerThreads(fcfs);
   }else{
     //rr
     instantiateConsumerThreads(roundrobinConsumer);
@@ -91,6 +101,7 @@ int main(int argc, char * argv[]){
   destroyThreads();
   //cout<<"here 2"<<endl;
   destroyMutexCond();
+  printStats();
   pthread_exit(0);
 }
 
@@ -132,13 +143,19 @@ int  getinputs(int argc,char* argv[]){
 
 
 
-product::product(int id_t,int life_t ,clock_t timestamp_t): id{id_t},life{life_t}, timestamp {timestamp_t}{};
+product::product(int id_t,int life_t ,clock_t timestamp_t): id{id_t},life{life_t}, timestamp {timestamp_t}, temp {timestamp_t}{};
 int product::getid(){
     return id;
   }
 
+void product::update_wait(){  
+  //clock_t x = clock();
+  wait+= clock()/(CLOCKS_PER_SEC/1000.0)-temp/(CLOCKS_PER_SEC/1000.0);
+}
+void product::update_temp(){
+  temp = clock();
 
-
+}
 int product:: getlife(){
     return life;
   }
@@ -172,6 +189,9 @@ int  productq::push(){
 
     product *p = new product(++id,rand()%1024 ,clock());
     produced++;
+    if(produced==1){
+      start = p->getTstamp();
+    }
     q.push(p);
    
     return id;
@@ -179,6 +199,7 @@ int  productq::push(){
 product* productq::pop(){
        
     product *p = q.front();
+    p->update_wait();
      q.pop();
      return p;
   }
@@ -240,6 +261,9 @@ void destroyThreads(){
 }
 void productq::consume(){
   consumed++;
+  if(consumed==produced){
+    totaltime= clock()/(CLOCKS_PER_SEC/1000.0)-start/(CLOCKS_PER_SEC/1000.0);
+  }
 }
 void joinThreads(){
   for(int x = 0; x<parameters[0]; x++){
@@ -316,3 +340,75 @@ void destroyMutexCond(){
   pthread_cond_destroy(&isempty);
 
 }					  
+product::~product(){
+  clock_t t = clock();
+  if((wait>maxW)||(maxW ==numeric_limits<double>::min())){
+    maxW = wait;
+  }
+  if((minW>wait)||(minW==numeric_limits<double>::max())){
+    minW = wait;
+  }
+  avgW+=wait;
+  double tt = t/(CLOCKS_PER_SEC/1000) - timestamp/(CLOCKS_PER_SEC/1000);
+  if((tt>maxT)||(maxT==numeric_limits<double>::min())){
+    maxT = tt;
+
+  }
+  if((minT>tt)||(minT==numeric_limits<double>::max())){
+    minT = tt;
+  }
+}
+
+void initStats(){
+  totaltime,avgW,avgT = 0.0;
+  minW,minT = numeric_limits<double>::max();
+  maxT,maxW = numeric_limits<double>::min();
+}
+
+void printStats(){
+  cout<<"total time = "<<totaltime<<" milliseconds"<<endl;
+  cout<<"Minimum Turnover = "<<minT<<" milliseconds"<<endl;
+  cout<<"Maximum Turnover= "<<maxT<<" milliseconds"<<endl;
+  cout<<"Average Turnover= "<<(avgT/((double)parameters[2]))<<" milliseconds"<<endl;
+   cout<<"Minimum wait = "<<minW<<" milliseconds"<<endl;
+  cout<<"Maximum wait= "<<maxW<<" milliseconds"<<endl;
+  cout<<"Average wait= "<<(avgW/((double)parameters[2]))<<" milliseconds"<<endl;
+
+  
+}
+
+void * fcfs(void * id){
+  product *p;
+  int life;
+  while(1){
+    pthread_mutex_lock(&acc);
+    while(q->isempty()){
+      pthread_cond_wait(&isempty,&acc);
+    }
+    if(q->getConsumed()==parameters[2]){
+      pthread_cond_broadcast(&isempty);
+      
+      pthread_mutex_unlock(&acc);
+      break;
+    }
+    p = q->pop();
+    life = p->getlife();
+   
+      for(int x = 0; x<life; x++){
+	fn();
+      }
+      cout<<"consumer "<<*(int*)id<<" consumed product "<<p->getid()<<endl;
+      delete p;
+      q->consume();
+      pthread_cond_signal(&isfull);
+      fflush(stdout);
+   
+    pthread_mutex_unlock(&acc);
+    usleep(100000);
+  }
+  // cout<<"exited"<<endl;
+  pthread_exit(NULL);
+  
+
+
+}
