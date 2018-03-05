@@ -388,7 +388,7 @@ void initStats(){
 void printStats(){
 
   processtime = clock()/(CLOCKS_PER_SEC/1000.0)-processtime;
-  cout<<"processTime = "<<processtime<<" milliseconds"<<endl;
+  cout<<"total time for processing all products = "<<processtime<<" milliseconds"<<endl;
   //cout<<"process time = "<<processtime<< "milliseconds"<<endl;
   cout<<"Minimum Turnover = "<<(double)minT<<" milliseconds"<<endl;
   cout<<"Maximum Turnover= "<<(double)maxT<<" milliseconds"<<endl;
