@@ -78,12 +78,12 @@ void joinThreads();//joins all threads
 int* producerID;//array of numbers for id
 int* consumerID;//array of numbers for id
 productq* q;//pointer to the product queue object
-void instantiateMutexCond();
-void destroyMutexCond();
-void* fcfs(void* id );
+void instantiateMutexCond();//creates mutex and cond vars
+void destroyMutexCond();//destroys mutex and cond vars
+void* fcfs(void* id );//first come first serve
 double totaltime, minT, maxT, avgT, minW, maxW,avgW, consumerT, producerT, processtime, producerThroughputTime;//global vars for statistics
-void initStats();
-void printStats();
+void initStats();//starts the stats
+void printStats();//ends the stats and prints it
 int main(int argc, char * argv[]){
   if(  getinputs(argc, argv)==0){
     /*print error message for not enough inputs*/
