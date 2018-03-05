@@ -10,6 +10,11 @@
 #include <queue>
 #include <cstdlib>
 #include <limits>
+/*I pledge my honor that I've abided by the stevens honors system
+  name: Hariharan Vijayachandran
+        Hannah Rodom
+
+*/
 using namespace std;
 
 int parameters[7];
@@ -41,7 +46,7 @@ private:
    int maxsize;
     int consumed;
   int produced;
-
+  
 public:
 
   productq( int size);//set size of queue (0 means unlimited)
@@ -76,7 +81,7 @@ productq* q;//pointer to the product queue object
 void instantiateMutexCond();
 void destroyMutexCond();
 void* fcfs(void* id );
-double totaltime, minT, maxT, avgT, minW, maxW,avgW, consumerT, producerT;
+double totaltime, minT, maxT, avgT, minW, maxW,avgW, consumerT, producerT, processtime, producerThroughputTime;//global vars for statistics
 void initStats();
 void printStats();
 int main(int argc, char * argv[]){
@@ -86,8 +91,10 @@ int main(int argc, char * argv[]){
   }
   q = new productq(parameters[3]);
    instantiateMutexCond();
+   initStats();
+   
   instantiateProducerThreads();
-  initStats();
+  
   
   if(parameters[4]==0){
     //fcfs
@@ -98,10 +105,12 @@ int main(int argc, char * argv[]){
   }
   joinThreads();
   //cout<<"here 1"<<endl;
+  printStats();
   destroyThreads();
   //cout<<"here 2"<<endl;
+ 
   destroyMutexCond();
-  printStats();
+  //printStats();
   pthread_exit(0);
 }
 
@@ -143,14 +152,14 @@ int  getinputs(int argc,char* argv[]){
 
 
 
-product::product(int id_t,int life_t ,clock_t timestamp_t): id{id_t},life{life_t}, timestamp {timestamp_t}, temp {timestamp_t}{};
+product::product(int id_t,int life_t ,clock_t timestamp_t): id{id_t},life{life_t}, timestamp {timestamp_t}, temp {timestamp_t},wait{0.0}{};
 int product::getid(){
     return id;
   }
 
 void product::update_wait(){  
   //clock_t x = clock();
-  wait+= clock()/(CLOCKS_PER_SEC/1000.0)-temp/(CLOCKS_PER_SEC/1000.0);
+  wait+= (double)clock()/(CLOCKS_PER_SEC/1000.0)-(double)temp/(CLOCKS_PER_SEC/1000.0);
 }
 void product::update_temp(){
   temp = clock();
@@ -186,16 +195,15 @@ bool productq::isempty(){
     return q.empty();
   }
 int  productq::push(){
-  int x = rand()%1024;
-  //cout<<x<<endl;
-  fflush(stdout);
-  product *p = new product(++id,1024 ,clock());
+  product *p = new product(++id,rand()%1024 ,clock());
     produced++;
     if(produced==1){
       start = p->getTstamp();
     }
     q.push(p);
-   
+    if(produced==parameters[2]){
+      producerThroughputTime = clock()/(CLOCKS_PER_SEC/1000.0)-producerThroughputTime;
+    }
     return id;
   }
 product* productq::pop(){
@@ -263,9 +271,6 @@ void destroyThreads(){
 }
 void productq::consume(){
   consumed++;
-  if(consumed==produced){
-    totaltime= clock()/(CLOCKS_PER_SEC/1000.0)-start/(CLOCKS_PER_SEC/1000.0);
-  }
 }
 void joinThreads(){
   for(int x = 0; x<parameters[0]; x++){
@@ -294,18 +299,24 @@ void* roundrobinConsumer(void* id){
     p = q->pop();
     life = p->getlife();
     if(life<=quantum){
+      double eat = clock()/(CLOCKS_PER_SEC/1000.0);
       for(int x = 0; x<life; x++){
 	fn();
       }
+      eat = clock()/(CLOCKS_PER_SEC/1000.0)-eat;
+      totaltime+=eat;
       cout<<"consumer "<<*(int*)id<<" consumed product "<<p->getid()<<endl;
       delete p;
       q->consume();
       pthread_cond_signal(&isfull);
       fflush(stdout);
     }else{
+       double eat = clock()/(CLOCKS_PER_SEC/1000.0);
       for(int x = 0; x<quantum; x++){
 	fn();
       }
+      eat = clock()/(CLOCKS_PER_SEC/1000.0)-eat;
+      totaltime+=eat;
       p->updateLife(life-quantum);
       q->addBack(p);
       //cout<<"added back"<<endl;
@@ -344,19 +355,22 @@ void destroyMutexCond(){
 }					  
 product::~product(){
   clock_t t = clock();
-  if((wait>maxW)||(maxW ==numeric_limits<double>::min())){
+  if((wait>maxW)){
+    //cout<<"wait1"<<endl;
     maxW = wait;
   }
-  if((minW>wait)||(minW==numeric_limits<double>::max())){
+  if((minW>wait)){
+    //cout<<"wait"<<endl;
+    //fflush(stdout);
     minW = wait;
   }
   avgW+=wait;
-  double tt = t/(CLOCKS_PER_SEC/1000) - timestamp/(CLOCKS_PER_SEC/1000);
-  if((tt>maxT)||(maxT==numeric_limits<double>::min())){
+  double tt = t/(CLOCKS_PER_SEC/1000.0) - timestamp/(CLOCKS_PER_SEC/1000.0);
+  if((tt>maxT)){
     maxT = tt;
 
   }
-  if((minT>tt)||(minT==numeric_limits<double>::max())){
+  if((tt<minT)){
     minT = tt;
   }
   avgT+=tt;
@@ -364,20 +378,26 @@ product::~product(){
 
 void initStats(){
   totaltime,avgW,avgT = 0.0;
-  minW,minT = numeric_limits<double>::max();
-  maxT,maxW = numeric_limits<double>::min();
+  minW=  100000000.0;
+  minT = 100000000.0;
+  maxT=0.0; maxW = 0.0;
+  processtime = clock()/(CLOCKS_PER_SEC/1000.0);
+  producerThroughputTime = processtime;
 }
 
 void printStats(){
-  cout<<"total time = "<<totaltime<<" milliseconds"<<endl;
-  cout<<"Minimum Turnover = "<<minT<<" milliseconds"<<endl;
-  cout<<"Maximum Turnover= "<<maxT<<" milliseconds"<<endl;
-  cout<<"Average Turnover= "<<(avgT/((double)parameters[2]))<<" milliseconds"<<endl;
-   cout<<"Minimum wait = "<<minW<<" milliseconds"<<endl;
-  cout<<"Maximum wait= "<<maxW<<" milliseconds"<<endl;
-  cout<<"Average wait= "<<(avgW/((double)parameters[2]))<<" milliseconds"<<endl;
 
-  
+  processtime = clock()/(CLOCKS_PER_SEC/1000.0)-processtime;
+  cout<<"processTime = "<<processtime<<" milliseconds"<<endl;
+  //cout<<"process time = "<<processtime<< "milliseconds"<<endl;
+  cout<<"Minimum Turnover = "<<(double)minT<<" milliseconds"<<endl;
+  cout<<"Maximum Turnover= "<<(double)maxT<<" milliseconds"<<endl;
+  cout<<"Average Turnover= "<<(avgT/((double)parameters[2]))<<" milliseconds"<<endl;
+  cout<<"Minimum wait = "<<(double)minW<<" milliseconds"<<endl;
+  cout<<"Maximum wait= "<<(double)maxW<<" milliseconds"<<endl;
+  cout<<"Average wait= "<<(avgW/((double)parameters[2]))<<" milliseconds"<<endl;
+  cout<<"Consumer Throughput = "<<((double)parameters[2])/(processtime/1000.0/60.0)<<"products per minute"<<endl;
+  cout<<"Producer Throughput= "<<((double)parameters[2])*60000.0/producerThroughputTime<<"products per minute"<<endl;
 }
 
 void * fcfs(void * id){
@@ -396,10 +416,12 @@ void * fcfs(void * id){
     }
     p = q->pop();
     life = p->getlife();
-   
+    double eat = clock()/(CLOCKS_PER_SEC/1000.0);
       for(int x = 0; x<life; x++){
 	fn();
       }
+      eat = clock()/(CLOCKS_PER_SEC/1000.0)-eat;
+      totaltime+=eat;
       cout<<"consumer "<<*(int*)id<<" consumed product "<<p->getid()<<endl;
       delete p;
       q->consume();
